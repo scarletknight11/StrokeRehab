@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using UnityEngine;
 using UnityEngine.Events;
+using Debug = UnityEngine.Debug;
 
 [Serializable]
 public struct Gesture
@@ -15,28 +16,40 @@ public struct Gesture
 
 public class GestureRecognition : MonoBehaviour
 {
+    public GameManager gm;
     public OVRSkeleton skeleton;
     public List<Gesture> gestures;
-    public bool debugMode = true;
+    public bool isRecognizing = false;
+    public float threshold = 0.1f;
     private List<OVRBone> fingerBones;
+    private Gesture previousGesture;
     
     
     // Start is called before the first frame update
     void Start()
     {
         fingerBones = new List<OVRBone>(skeleton.Bones);
+        previousGesture = new Gesture();
     }
 
     // Update is called once per frame
     void Update()
     {
-        if (debugMode && Input.GetKeyDown(KeyCode.Space))
+        if(isRecognizing)
         {
-            Save();
+            Gesture currentGesture = Recognize();
+            bool hasRecognized = !currentGesture.Equals(new Gesture());
+
+            if (hasRecognized && !currentGesture.Equals(previousGesture))
+            {
+                Debug.Log("New Gesture Found : " + currentGesture.name);
+                previousGesture = currentGesture;
+                currentGesture.onRecognized.Invoke();
+            }
         }
     }
 
-    void Save()
+    public Gesture Save()
     {
         Gesture g = new Gesture();
         g.name = "New Gesture";
@@ -48,6 +61,38 @@ public class GestureRecognition : MonoBehaviour
         }
 
         g.fingerDatas = data;
-        gestures.Add(g);
+        return g;
+    }
+
+    Gesture Recognize()
+    {
+        Gesture currentGesture = new Gesture();
+        float currentMin = Mathf.Infinity;
+
+        foreach (var gesture in gestures)
+        {
+            float sumDistance = 0;
+            bool isDiscarded = false;
+            for (int i = 0; i < fingerBones.Count; i++)
+            {
+                Vector3 currentData = skeleton.transform.InverseTransformPoint(fingerBones[i].Transform.position);
+                float distance = Vector3.Distance(currentData, gesture.fingerDatas[i]);
+                if (distance > threshold)
+                {
+                    isDiscarded = true;
+                    break;
+                }
+
+                sumDistance += distance;
+            }
+
+            if (!isDiscarded && sumDistance < currentMin)
+            {
+                currentMin = sumDistance;
+                currentGesture = gesture;
+            }
+        }
+
+        return currentGesture;
     }
 }
